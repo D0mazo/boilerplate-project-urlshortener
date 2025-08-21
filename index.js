@@ -16,58 +16,97 @@ app.get('/', function (req, res) {
   res.sendFile(process.cwd() + '/views/index.html');
 });
 
-// Hello endpoint (kept from template)
-app.get('/api/hello', function (req, res) {
-  res.json({ greeting: 'hello API' });
-});
-
-// In-memory URL database
-let urlDatabase = [];
+// In-memory user database
+let users = [];
 let idCounter = 1;
 
-// POST: create short URL
-app.post('/api/shorturl', (req, res) => {
-  let inputUrl = req.body.url;
-
-  try {
-    const parsed = new URL(inputUrl); // built-in URL validator
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return res.json({ error: 'invalid url' });
-    }
-
-    // If URL already exists, return existing short_url
-    let existing = urlDatabase.find(u => u.original_url === inputUrl);
-    if (existing) {
-      return res.json(existing);
-    }
-
-    // Store new one
-    let entry = {
-      original_url: inputUrl,
-      short_url: idCounter++
-    };
-    urlDatabase.push(entry);
-    res.json(entry);
-
-  } catch (e) {
-    return res.json({ error: 'invalid url' });
+// POST: create new user
+app.post('/api/users', (req, res) => {
+  const username = req.body.username;
+  if (!username) {
+    return res.json({ error: 'username is required' });
   }
+  const _id = idCounter++.toString();
+  const user = { _id, username, log: [] };
+  users.push(user);
+  res.json({ username, _id });
 });
 
-// GET: redirect from short URL
-app.get('/api/shorturl/:short', (req, res) => {
-  let short = parseInt(req.params.short);
-  let entry = urlDatabase.find(u => u.short_url === short);
+// GET: list all users
+app.get('/api/users', (req, res) => {
+  res.json(users.map(u => ({ _id: u._id, username: u.username })));
+});
 
-  if (entry) {
-    return res.redirect(entry.original_url);
-  } else {
-    return res.json({ error: 'No short URL found for given input' });
+// POST: add exercise to user
+app.post('/api/users/:_id/exercises', (req, res) => {
+  const _id = req.params._id;
+  const user = users.find(u => u._id === _id);
+  if (!user) {
+    return res.json({ error: 'user not found' });
   }
+  const description = req.body.description;
+  const duration = parseInt(req.body.duration);
+  let date = req.body.date;
+  if (!description || isNaN(duration)) {
+    return res.json({ error: 'description and duration are required' });
+  }
+  let dateObj;
+  if (date) {
+    dateObj = new Date(date);
+    if (isNaN(dateObj.getTime())) {
+      return res.json({ error: 'invalid date' });
+    }
+  } else {
+    dateObj = new Date();
+  }
+  const dateStr = dateObj.toDateString();
+  const exercise = { description, duration, date: dateStr };
+  user.log.push(exercise);
+  res.json({
+    username: user.username,
+    description,
+    duration,
+    date: dateStr,
+    _id: user._id
+  });
+});
+
+// GET: get user logs
+app.get('/api/users/:_id/logs', (req, res) => {
+  const _id = req.params._id;
+  const user = users.find(u => u._id === _id);
+  if (!user) {
+    return res.json({ error: 'user not found' });
+  }
+  let log = [...user.log];
+  const { from, to, limit } = req.query;
+  let fromDate = from ? new Date(from) : null;
+  let toDate = to ? new Date(to) : null;
+  if (fromDate && isNaN(fromDate.getTime())) fromDate = null;
+  if (toDate && isNaN(toDate.getTime())) toDate = null;
+  if (fromDate || toDate) {
+    fromDate = fromDate || new Date(0);
+    toDate = toDate || new Date();
+    log = log.filter(ex => {
+      const exDate = new Date(ex.date);
+      return exDate >= fromDate && exDate <= toDate;
+    });
+  }
+  if (limit) {
+    const lim = parseInt(limit);
+    if (!isNaN(lim)) {
+      log = log.slice(0, lim);
+    }
+  }
+  res.json({
+    username: user.username,
+    count: log.length,
+    _id: user._id,
+    log
+  });
 });
 
 // Listen
 app.listen(port, function () {
   console.log(`Listening on port ${port}`);
 });
-

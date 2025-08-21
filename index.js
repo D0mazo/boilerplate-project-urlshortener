@@ -2,8 +2,6 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const dns = require('dns');
-const urlParser = require('url');
 
 const app = express();
 
@@ -37,26 +35,20 @@ app.post('/api/shorturl', (req, res) => {
       return res.json({ error: 'invalid url' });
     }
 
-    // Optional DNS check (FCC often wants this):
-    dns.lookup(parsed.hostname, (err) => {
-      if (err) {
-        return res.json({ error: 'invalid url' });
-      }
+    // If URL already exists, return existing short_url
+    let existing = urlDatabase.find(u => u.original_url === inputUrl);
+    if (existing) {
+      return res.json(existing);
+    }
 
-      // If URL already exists, return existing short_url
-      let existing = urlDatabase.find(u => u.original_url === inputUrl);
-      if (existing) {
-        return res.json(existing);
-      }
+    // Store new one
+    let entry = {
+      original_url: inputUrl,
+      short_url: idCounter++
+    };
+    urlDatabase.push(entry);
+    res.json(entry);
 
-      // Store new one
-      let entry = {
-        original_url: inputUrl,
-        short_url: idCounter++
-      };
-      urlDatabase.push(entry);
-      res.json(entry);
-    });
   } catch (e) {
     return res.json({ error: 'invalid url' });
   }
@@ -78,3 +70,4 @@ app.get('/api/shorturl/:short', (req, res) => {
 app.listen(port, function () {
   console.log(`Listening on port ${port}`);
 });
+
